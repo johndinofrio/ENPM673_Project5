@@ -6,7 +6,9 @@ from Oxford_dataset import UndistortImage
 from matplotlib import pyplot as plt
 import glob
 import os
-import numpy as np
+import random
+
+from numpy.linalg import matrix_rank
 
 
 def UndistortImage(image, LUT):
@@ -41,6 +43,11 @@ def ReadCameraModel():
 
     return fx, fy, cx, cy, G_camera_image, LUT
 
+# Verify if Fundamental Matrix is below required threshold
+def checkFmatrix(x1,x2,F):
+    x11=np.array([x1[0],x1[1],1]).T
+    x22=np.array([x2[0],x2[1],1])
+    return abs(np.squeeze(np.matmul((np.matmul(x22,F)),x11)))
 
 def findPoints(img_old,img_new):
     old = cv2.cvtColor(img_old, cv2.COLOR_BGR2GRAY)
@@ -52,37 +59,108 @@ def findPoints(img_old,img_new):
     keypoints_1, descriptors_1 = sift.detectAndCompute(old,None)
     keypoints_2, descriptors_2 = sift.detectAndCompute(new,None)
 
-    #feature matching
-    bf = cv2.BFMatcher(cv2.NORM_L1, crossCheck=True)
+    # FLANN parameters
+    FLANN_INDEX_KDTREE = 0
+    index_params = dict(algorithm = FLANN_INDEX_KDTREE, trees = 5)
+    search_params = dict(checks=50)
 
-    matches = bf.match(descriptors_1,descriptors_2)
-    matches = sorted(matches, key = lambda x:x.distance)
+    # Find matching points
+    flann = cv2.FlannBasedMatcher(index_params,search_params)
+    matches = flann.knnMatch(descriptors_1,descriptors_2,k=2)
 
-    # Initialize lists
+    
+
+    # Initialize keypoints list
+    list_kp1 = [] # old frame
+    list_kp2 = [] # new frame
+
+    
+    # Ratio test as per Lowe's paper
+    for i,(m,n) in enumerate(matches):
+        if m.distance < 0.5*n.distance:
+            list_kp1.append(keypoints_1[m.queryIdx].pt)
+            list_kp2.append(keypoints_2[m.trainIdx].pt)
+
+    inlier_count = 0
+    # Initialize list of inliers for new and old frame
+    inlier1 = [] # old frame
+    inlier2 = [] # new frame
+    
+    # RANSAC Algorithm - 50 iterations
+    for i in range(0, 50):  
+        count = 0
+        randomPoints = [] 
+        # Random corresponding points from old and new frame
+        correspondingPoints1 = [] 
+        correspondingPoints2 = [] 
+        # Best corresponding matching points 
+        bestPoints1 = [] 
+        bestPoints2 = []
+        
+        while(True): # Loop runs while we do not get eight distinct random points
+            num = random.randint(0, len(features1)-1)
+            if num not in randomPoints:
+                randomPoints.append(num)
+            if len(randomPoints) == 8:
+                break
+
+        for point in randomPoints: # Looping over eight random points
+            correspondingPoints1.append([list_kp1[point][0], list_kp1[point][1]]) 
+            correspondingPoints2.append([list_kp2[point][0], list_kp2[point][1]])
+    
+        # Computing Fundamentals Matrix from current frame to next frame
+        F = estimateF(correspondingPoints1, correspondingPoints2)
+
+        for number in range(0, len(features1)):
+            # If x2.T * F * x1 is less than threshold (0.01) then it is considered as Inlier
+            if checkFmatrix(list_kp1[number], list_kp2[number], F) < 0.01:
+                count = count + 1 
+                bestPoints1.append(list_kp1[number])
+                bestPoints1.append(list_kp2[number])
+
+        # Check to see if this F matrix has the most inliers
+        if count > inlier_count: 
+            inlier_count = count
+            BestF = F
+            inlier1 = bestPoints1
+            inlier2 = bestPoints1
+
+    return BestF, inlier1, inlier2
+
+
+
+
+
+    # Initialize key points list lists
     list_kp1 = []
     list_kp2 = []
+##    # For each match...
+##    for mat in matches:
+##
+##        # Get the matching keypoints for each of the images
+##        img1_idx = mat.queryIdx
+##        img2_idx = mat.trainIdx
+##
+##        # x - columns
+##        # y - rows
+##        # Get the coordinates
+##        (x1, y1) = keypoints_1[img1_idx].pt
+##        (x2, y2) = keypoints_2[img2_idx].pt
+##
+##        # Append to each list
+##        list_kp1.append((x1, y1))
+##        list_kp2.append((x2, y2))
+##
+##        if len(list_kp1)>7:
+##            return list_kp1,list_kp2
 
-    # For each match...
-    for mat in matches:
+        
 
-        # Get the matching keypoints for each of the images
-        img1_idx = mat.queryIdx
-        img2_idx = mat.trainIdx
-
-        # x - columns
-        # y - rows
-        # Get the coordinates
-        (x1, y1) = keypoints_1[img1_idx].pt
-        (x2, y2) = keypoints_2[img2_idx].pt
-
-        # Append to each list
-        list_kp1.append((x1, y1))
-        list_kp2.append((x2, y2))
-
-        if len(list_kp1)>7:
-            return list_kp1,list_kp2
+    
         
 # Compute the Fundamental Matrix
+# Input - 8 Corresponding points old frame, 8 Corresponding points new frame
+# Output - Fundamental Matrix (F), Intrinsic Parameters (K)
 def estimateF(p1,p2):
     A = []
     # Append values in A matrix for homography Ax=0
@@ -109,6 +187,8 @@ def estimateF(p1,p2):
     return F
 
 # Compute the Essential Matrix
+# Input - Fundamental Matrix (F), Intrinsic Parameters (K)
+# Output - Essential Matrix (E)
 def estimateE(F,K):
     E = np.matmul(np.matmul(np.transpose(K),F),K)
 
@@ -122,6 +202,9 @@ def estimateE(F,K):
     # Return Essential Matrix
     return E
 
+# Compute the Camera Pose
+# Input - Essential matrix (E)
+# Output - Camera position (x,y,z) and rotation matrix
 def estimateC(E):
     # Compute SVD of the Essential Matrix
     u, s, v = np.linalg.svd(E,full_matrices=False)
@@ -156,8 +239,6 @@ def estimateC(E):
     return C1,C2,C3,C4,R1,R2,R3,R4
     
     
-    
-    
 
 def loadImages(path = ".png"):
 
@@ -182,11 +263,10 @@ for file in files:
 
     if count>0:
     # Perform all matrix operations
-        points1, points2 = findPoints(img_old,img_new)
-        #=========STILL NEED TO DO RANSAC FOR F=========
-        F = estimateF(points1, points2)
+        F, inliers1, inliers2 = findPoints(img_old,img_new)
         E = estimateE(F,K)
         C1,C2,C3,C4,R1,R2,R3,R4 = estimateC(E)
+        
         
     cv2.imshow("Undistorted Img", img_new)
 
