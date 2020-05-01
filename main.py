@@ -4,18 +4,19 @@ from Oxford_dataset import ReadCameraModel
 from Oxford_dataset import UndistortImage
 from matplotlib import pyplot as plt
 import glob
+import os
 
-#get the image
-img1 =[cv2.imread(File) for File in glob.glob("./Oxford_dataset/stereo/centre_demo/*.png")]
-img2 = np.array(img1)
+def loadImages(path = ".png"):
 
-for img_num in range(0,302):
-    img = img2[img_num]
-    cv2.imshow('thing1',img)
-    cv2.waitKey(0)
-    color_image = cv2.cvtColor(img,cv2.COLOR_BayerGR2BGR)
+    return [os.path.join(path, ima) for ima in os.listdir(path)]
+
+files=loadImages("Oxford_dataset/stereo/centre")
+images = []
+for file in files:
+    images=cv2.imread(file, cv2.IMREAD_UNCHANGED)
+    print(images)
+    cv2.imshow("video", images)
+    cv2.waitKey(10)
+    color_image = cv2.cvtColor(images, cv2.COLOR_BayerGR2BGR)
     fx, fy, cx, cy, G_camera_image, LUT = ReadCameraModel("./Oxford_dataset/model")
-    undistorted_image = UndistortImage(img,LUT)
-
-    
-   
+    undistorted_image = UndistortImage(images, LUT)
