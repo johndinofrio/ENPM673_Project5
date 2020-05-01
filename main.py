@@ -98,7 +98,7 @@ def findPoints(img_old,img_new):
         bestPoints2 = []
         
         while(True): # Loop runs while we do not get eight distinct random points
-            num = random.randint(0, len(features1)-1)
+            num = random.randint(0, len(list_kp1)-1)
             if num not in randomPoints:
                 randomPoints.append(num)
             if len(randomPoints) == 8:
@@ -111,7 +111,7 @@ def findPoints(img_old,img_new):
         # Computing Fundamentals Matrix from current frame to next frame
         F = estimateF(correspondingPoints1, correspondingPoints2)
 
-        for number in range(0, len(features1)):
+        for number in range(0, len(list_kp1)):
             # If x2.T * F * x1 is less than threshold (0.01) then it is considered as Inlier
             if checkFmatrix(list_kp1[number], list_kp2[number], F) < 0.01:
                 count = count + 1 
@@ -238,9 +238,10 @@ def estimateC(E):
 
     return C1,C2,C3,C4,R1,R2,R3,R4
     
-    
-
 def loadImages(path = ".png"):
+
+
+
 
     return [os.path.join(path, ima) for ima in os.listdir(path)]
 files=loadImages("Oxford_dataset/stereo/centre")
