@@ -212,7 +212,6 @@ def estimateC(E):
 
     # Four possible Camera Poses (C) and Rotation Matrices (R)
     C1 = u[:,2]
-    print('C1',C1,'/n c1',c1, '/n u', u)
     R1 = np.matmul(np.matmul(u,w),v)
     # Correct pose and matrix if determinant is -1
     if np.linalg.det(R1)<0:
