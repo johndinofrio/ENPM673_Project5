@@ -44,10 +44,10 @@ def ReadCameraModel():
     return fx, fy, cx, cy, G_camera_image, LUT
 
 # Verify if Fundamental Matrix is below required threshold
-def checkFmatrix(x1,x2,F):
-    x11=np.array([x1[0],x1[1],1]).T
-    x22=np.array([x2[0],x2[1],1])
-    return abs(np.squeeze(np.matmul((np.matmul(x22,F)),x11)))
+def threshold(x1,x2,F):
+    x1_new=np.array([x1[0],x1[1],1]).T
+    x2_new=np.array([x2[0],x2[1],1])
+    return abs(np.squeeze(np.matmul((np.matmul(x2_new,F)),x1_new)))
 
 def findPoints(img_old,img_new):
     old = cv2.cvtColor(img_old, cv2.COLOR_BGR2GRAY)
@@ -75,7 +75,7 @@ def findPoints(img_old,img_new):
     list_kp2 = [] # new frame
 
     
-    # Ratio test as per Lowe's paper
+    # Ratio test to see which keypoints are the best
     for i,(m,n) in enumerate(matches):
         if m.distance < 0.5*n.distance:
             list_kp1.append(keypoints_1[m.queryIdx].pt)
@@ -113,7 +113,7 @@ def findPoints(img_old,img_new):
 
         for number in range(0, len(list_kp1)):
             # If x2.T * F * x1 is less than threshold (0.01) then it is considered as Inlier
-            if checkFmatrix(list_kp1[number], list_kp2[number], F) < 0.01:
+            if threshold(list_kp1[number], list_kp2[number], F) < 0.01:
                 count = count + 1 
                 bestPoints1.append(list_kp1[number])
                 bestPoints1.append(list_kp2[number])
@@ -131,9 +131,9 @@ def findPoints(img_old,img_new):
 
 
 
-    # Initialize key points list lists
-    list_kp1 = []
-    list_kp2 = []
+##    # Initialize key points list lists
+##    list_kp1 = []
+##    list_kp2 = []
 ##    # For each match...
 ##    for mat in matches:
 ##
@@ -211,26 +211,27 @@ def estimateC(E):
     w = [[0,-1,0],[1,0,0],[0,0,1]]
 
     # Four possible Camera Poses (C) and Rotation Matrices (R)
-    C1 = u[:][-1]
+    C1 = u[:,2]
+    print('C1',C1,'/n c1',c1, '/n u', u)
     R1 = np.matmul(np.matmul(u,w),v)
     # Correct pose and matrix if determinant is -1
     if np.linalg.det(R1)<0:
         C1 = -C1
         R1 = -R1
 
-    C2 = -u[:][-1]
+    C2 = -u[:,2]
     R2 = np.matmul(np.matmul(u,w),v)
     if np.linalg.det(R2)<0:
         C2 = -C2
         R2 = -R2
     
-    C3 = u[:][-1]
+    C3 = u[:,2]
     R3 = np.matmul(np.matmul(u,np.transpose(w)),v)
     if np.linalg.det(R3)<0:
         C3 = -C3
         R3 = -R3
 
-    C4 = -u[:][-1]
+    C4 = -u[:,2]
     R4 = np.matmul(np.matmul(u,np.transpose(w)),v)
     if np.linalg.det(R4)<0:
         C4 = -C4
