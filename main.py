@@ -50,14 +50,22 @@ def threshold(x1,x2,F):
     return abs(np.squeeze(np.matmul((np.matmul(x2_new,F)),x1_new)))
 
 def findPoints(img_old,img_new):
+    SIFTimg=img_new.copy
+    refinedSIFTimg = img_new.copy
     old = cv2.cvtColor(img_old, cv2.COLOR_BGR2GRAY)
     new = cv2.cvtColor(img_new, cv2.COLOR_BGR2GRAY)
 
     #sift
     sift = cv2.xfeatures2d.SIFT_create()
+    #orb = cv2.ORB_create(nfeatures=1500)
+    # kp,descriptors = orb.detectAndCompute(old, None)
 
     keypoints_1, descriptors_1 = sift.detectAndCompute(old,None)
     keypoints_2, descriptors_2 = sift.detectAndCompute(new,None)
+    SIFTimg = cv2.drawKeypoints(img_new,keypoints_2,None)
+    cv2.imshow("sift",SIFTimg)
+    cv2.moveWindow("sift", 10, 10)
+
 
     # FLANN parameters
     FLANN_INDEX_KDTREE = 0
@@ -67,27 +75,30 @@ def findPoints(img_old,img_new):
     # Find matching points
     flann = cv2.FlannBasedMatcher(index_params,search_params)
     matches = flann.knnMatch(descriptors_1,descriptors_2,k=2)
-
     
 
     # Initialize keypoints list
     list_kp1 = [] # old frame
     list_kp2 = [] # new frame
-
+    refinedpoints = []
     
     # Ratio test to see which keypoints are the best
     for i,(m,n) in enumerate(matches):
-        if m.distance < 0.5*n.distance:
+        if m.distance < 0.8*n.distance:
             list_kp1.append(keypoints_1[m.queryIdx].pt)
             list_kp2.append(keypoints_2[m.trainIdx].pt)
+            refinedpoints.append(keypoints_2[m.trainIdx])
+    refinedSIFTimg = cv2.drawKeypoints(img_new,refinedpoints,None)
+    cv2.imshow("refined sift", refinedSIFTimg)
+    cv2.moveWindow("refined sift", 10, 350)
 
     inlier_count = 0
     # Initialize list of inliers for new and old frame
     inlier1 = [] # old frame
     inlier2 = [] # new frame
     
-    # RANSAC Algorithm - 50 iterations
-    for i in range(0, 50):  
+    # RANSAC Algorithm - 100 iterations
+    for i in range(0, 100):
         count = 0
         randomPoints = [] 
         # Random corresponding points from old and new frame
@@ -240,33 +251,34 @@ def estimateC(E):
     
 def loadImages(path = ".png"):
 
-
-
-
     return [os.path.join(path, ima) for ima in os.listdir(path)]
+
+
 files=loadImages("Oxford_dataset/stereo/centre")
+files.sort()
 images = []
 count = 0
+fx, fy, cx, cy, G_camera_image, LUT = ReadCameraModel()
 for file in files:
     images=cv2.imread(file, cv2.IMREAD_UNCHANGED)
-    cv2.imshow("video", images)
+    print(images.shape)
+    #cv2.imshow("video", images)
     
     color_image = cv2.cvtColor(images, cv2.COLOR_BayerGR2BGR)
-    
-
-    fx, fy, cx, cy, G_camera_image, LUT = ReadCameraModel()
-    # Camera intrinsic parameters 
+    # Camera intrinsic parameters
     K = [[fx,0,cx],[0,fy,cy],[0,0,1]]
 
     if count>0:
         img_old = img_new
-    img_new = UndistortImage(color_image, LUT)
 
+    #img_new=color_image
+    img_new = UndistortImage(color_image, LUT)
+    img_new = cv2.resize(img_new, (400, 300))
     if count>0:
     # Perform all matrix operations
-        F, inliers1, inliers2 = findPoints(img_old,img_new)
-        E = estimateE(F,K)
-        C1,C2,C3,C4,R1,R2,R3,R4 = estimateC(E)
+       F, inliers1, inliers2 = findPoints(img_old,img_new)
+       E = estimateE(F,K)
+       C1,C2,C3,C4,R1,R2,R3,R4 = estimateC(E)
         
         
     cv2.imshow("Undistorted Img", img_new)
