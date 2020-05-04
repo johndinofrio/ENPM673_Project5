@@ -1,6 +1,9 @@
+from typing import List, Any, Tuple
+
 import numpy as np
 import cv2 as cv2
 from scipy.ndimage import map_coordinates as interp2
+import scipy.optimize as opt
 # from Oxford_dataset import ReadCameraModel
 from Oxford_dataset import UndistortImage
 from matplotlib import pyplot as plt
@@ -63,8 +66,8 @@ def findPoints(img_old,img_new):
     keypoints_1, descriptors_1 = sift.detectAndCompute(old,None)
     keypoints_2, descriptors_2 = sift.detectAndCompute(new,None)
     SIFTimg = cv2.drawKeypoints(img_new,keypoints_2,None)
-    cv2.imshow("sift",SIFTimg)
-    cv2.moveWindow("sift", 10, 10)
+    # cv2.imshow("sift",SIFTimg)
+    # cv2.moveWindow("sift", 10, 10)
 
 
     # FLANN parameters
@@ -89,8 +92,8 @@ def findPoints(img_old,img_new):
             list_kp2.append(keypoints_2[m.trainIdx].pt)
             refinedpoints.append(keypoints_2[m.trainIdx])
     refinedSIFTimg = cv2.drawKeypoints(img_new,refinedpoints,None)
-    cv2.imshow("refined sift", refinedSIFTimg)
-    cv2.moveWindow("refined sift", 10, 350)
+    # cv2.imshow("refined sift", refinedSIFTimg)
+    # cv2.moveWindow("refined sift", 10, 350)
 
     inlier_count = 0
     # Initialize list of inliers for new and old frame
@@ -127,14 +130,14 @@ def findPoints(img_old,img_new):
             if threshold(list_kp1[number], list_kp2[number], F) < 0.01:
                 count = count + 1 
                 bestPoints1.append(list_kp1[number])
-                bestPoints1.append(list_kp2[number])
+                bestPoints2.append(list_kp2[number])
 
         # Check to see if this F matrix has the most inliers
         if count > inlier_count: 
             inlier_count = count
             BestF = F
             inlier1 = bestPoints1
-            inlier2 = bestPoints1
+            inlier2 = bestPoints2
 
     return BestF, inlier1, inlier2
 
@@ -142,30 +145,30 @@ def findPoints(img_old,img_new):
 
 
 
-##    # Initialize key points list lists
-##    list_kp1 = []
-##    list_kp2 = []
-##    # For each match...
-##    for mat in matches:
-##
-##        # Get the matching keypoints for each of the images
-##        img1_idx = mat.queryIdx
-##        img2_idx = mat.trainIdx
-##
-##        # x - columns
-##        # y - rows
-##        # Get the coordinates
-##        (x1, y1) = keypoints_1[img1_idx].pt
-##        (x2, y2) = keypoints_2[img2_idx].pt
-##
-##        # Append to each list
-##        list_kp1.append((x1, y1))
-##        list_kp2.append((x2, y2))
-##
-##        if len(list_kp1)>7:
-##            return list_kp1,list_kp2
+   # # Initialize key points list lists
+   # list_kp1 = []
+   # list_kp2: List[Tuple[Any, Any]] = []
+   # # For each match...
+   # for mat in matches:
+   #
+   #     # Get the matching keypoints for each of the images
+   #     img1_idx = mat.queryIdx
+   #     img2_idx = mat.trainIdx
+   #
+   #     # x - columns
+   #     # y - rows
+   #     # Get the coordinates
+   #     (x1, y1) = keypoints_1[img1_idx].pt
+   #     (x2, y2) = keypoints_2[img2_idx].pt
+   #
+   #     # Append to each list
+   #     list_kp1.append((x1, y1))
+   #     list_kp2.append((x2, y2))
+   #
+   #     if len(list_kp1)>7:
+   #         return list_kp1,list_kp2
+   #
 
-        
 
     
         
@@ -248,7 +251,106 @@ def estimateC(E):
         R4 = -R4
 
     return C1,C2,C3,C4,R1,R2,R3,R4
-    
+
+def skew(x):
+    return np.array([[0, -x[2], x[1]], [x[2], 0, x[0]], [x[1], x[0], 0]])
+
+
+def LinearTriangulation(K, C1, R1, C2, R2, x1, x2):
+    x1=np.asarray(x1)
+    I = np.identity(3)
+    sz = x1.shape[0]
+    C1 = np.reshape(C1, (3, 1))
+    C2 = np.reshape(C2, (3, 1))
+    P1 = np.dot(K, np.dot(R1, np.concatenate((I, -C1),axis=1)))
+    P2 = np.dot(K, np.dot(R2, np.concatenate((I, -C2),axis=1)))
+
+    #     print(P2.shape)
+    X1 = np.concatenate((x1, np.ones((sz, 1))), axis=1)
+    X2 = np.concatenate((x2, np.ones((sz, 1))), axis=1)
+
+    X = np.zeros((sz, 3))
+
+    for i in range(sz):
+        skew1 = skew(X1[i, :])
+        skew2 = skew(X2[i, :])
+        A = np.concatenate((np.dot(skew1, P1), np.dot(skew2, P2)))
+        _, _, v = np.linalg.svd(A)
+        x = v[-1] / v[-1, -1]
+        x = np.reshape(x, (len(x), -1))
+        X[i, :] = x[0:3].T
+
+    return X
+
+def Cheirality(C, R, X): #TODO
+
+    best = 0
+    for i in range(4):
+
+
+        N = X[i].shape[0]
+        n = 0
+        for j in range(N):
+            if ((np.dot(R[i][2, :], (X[i][j, :] - C[i])) > 0)
+                    and X[i][j, 2] >= 0):
+                n = n + 1
+        if n > best:
+            C = C[i]
+            R = R[i]
+            X = X[i]
+            best = n
+
+    return X, R, C
+
+def NonLinearTriangulation(K, x1, x2, X_0, R1, C1, R2, C2): #TODO
+
+    sz = x1.shape[0]
+    X = np.zeros((sz, 3))
+
+    X0 = X_0.flatten()
+    #     Tracer()()
+    optimized_params = opt.least_squares(
+        fun=minimizeFunction,
+        x0=X0,
+        method="dogbox",
+        args=[K, x1, x2, R1, C1, R2, C2])
+
+    X = np.reshape(optimized_params.x, (sz, 3))
+
+    return X
+
+
+def minimizeFunction(init, K, x1, x2, R1, C1, R2, C2): #TODO
+
+    sz = x1.shape[0]
+    X = np.reshape(init, (sz, 3))
+
+    I = np.identity(3)
+    C2 = np.reshape(C2, (3, -1))
+
+    X = np.hstack((X, np.ones((sz, 1))))
+
+    P1 = np.dot(K, np.dot(R1, np.hstack((I, -C1))))
+    P2 = np.dot(K, np.dot(R2, np.hstack((I, -C2))))
+
+    error1 = 0
+    error2 = 0
+    error = []
+
+    u1 = np.divide((np.dot(P1[0, :], X.T).T), (np.dot(P1[2, :], X.T).T))
+    v1 = np.divide((np.dot(P1[1, :], X.T).T), (np.dot(P1[2, :], X.T).T))
+    u2 = np.divide((np.dot(P2[0, :], X.T).T), (np.dot(P2[2, :], X.T).T))
+    v2 = np.divide((np.dot(P2[1, :], X.T).T), (np.dot(P2[2, :], X.T).T))
+
+    #     print(u1.shape,x1.shape)
+
+    error1 = ((x1[:, 0] - u1) + (x1[:, 1] - v1))
+    error2 = ((x2[:, 0] - u2) + (x2[:, 1] - v2))
+    #     print(error1.shape)
+    error = sum(error1, error2)
+
+    return sum(error)
+
 def loadImages(path = ".png"):
 
     return [os.path.join(path, ima) for ima in os.listdir(path)]
@@ -276,12 +378,17 @@ for file in files:
     img_new = cv2.resize(img_new, (400, 300))
     if count>0:
     # Perform all matrix operations
-       F, inliers1, inliers2 = findPoints(img_old,img_new)
-       E = estimateE(F,K)
-       C1,C2,C3,C4,R1,R2,R3,R4 = estimateC(E)
-        
-        
-    cv2.imshow("Undistorted Img", img_new)
+        F, inliers1, inliers2 = findPoints(img_old,img_new)
+        E = estimateE(F,K)
+        C1,C2,C3,C4,R1,R2,R3,R4 = estimateC(E)
+        print(C1,C2,C3,C4)
+        print(R1, R2, R3, R4)
+        X = LinearTriangulation(K, C1, R1, C2, R2, inliers1, inliers2)
+        C=np.vstack((C1,C2,C3,C4))
+        R = np.hstack((R1, R2, R3, R4))
+        X,R,C=Cheirality(C,R,X)
+        print(X,R,C)
+    # cv2.imshow("Undistorted Img", img_new)
 
 
     count+=1
