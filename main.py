@@ -286,21 +286,18 @@ def Cheirality(C, R, X): #TODO
 
     best = 0
     for i in range(4):
-
-
-        N = X[i].shape[0]
+        N = X.shape[0]
         n = 0
         for j in range(N):
-            if ((np.dot(R[i][2, :], (X[i][j, :] - C[i])) > 0)
-                    and X[i][j, 2] >= 0):
-                n = n + 1
+            if (np.dot(R[i][2, :], (X[j] - C[i])) > 0):
+                n += 1
         if n > best:
-            C = C[i]
-            R = R[i]
-            X = X[i]
+            Cbest = C[i]
+            Rbest = R[i]
+            Xbest = X[i]
             best = n
 
-    return X, R, C
+    return Xbest, Rbest, Cbest
 
 def NonLinearTriangulation(K, x1, x2, X_0, R1, C1, R2, C2): #TODO
 
@@ -381,11 +378,9 @@ for file in files:
         F, inliers1, inliers2 = findPoints(img_old,img_new)
         E = estimateE(F,K)
         C1,C2,C3,C4,R1,R2,R3,R4 = estimateC(E)
-        print(C1,C2,C3,C4)
-        print(R1, R2, R3, R4)
         X = LinearTriangulation(K, C1, R1, C2, R2, inliers1, inliers2)
         C=np.vstack((C1,C2,C3,C4))
-        R = np.hstack((R1, R2, R3, R4))
+        R = np.array([R1, R2, R3, R4])
         X,R,C=Cheirality(C,R,X)
         print(X,R,C)
     # cv2.imshow("Undistorted Img", img_new)
