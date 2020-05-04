@@ -1,4 +1,5 @@
 from typing import List, Any, Tuple
+from mpl_toolkits.mplot3d import Axes3D  # noqa: F401 unused import
 
 import numpy as np
 import cv2 as cv2
@@ -15,8 +16,6 @@ from numpy.linalg import matrix_rank
 
 
 def UndistortImage(image, LUT):
-##    print(image.shape)
-##    print(LUT.shape)
     reshaped_lut = LUT[:, 1::-1].T.reshape((2, image.shape[0], image.shape[1]))
     undistorted = np.rollaxis(np.array([interp2(image[:, :, channel], reshaped_lut, order=1) for channel in range(0, image.shape[2])]), 0, 3)
 
@@ -228,27 +227,27 @@ def estimateC(E):
     C1 = u[:,2]
     R1 = np.matmul(np.matmul(u,w),v)
     # Correct pose and matrix if determinant is -1
-    if np.linalg.det(R1)<0:
-        C1 = -C1
-        R1 = -R1
+##    if np.linalg.det(R1)<0:
+##        C1 = -C1
+##        R1 = -R1
 
     C2 = -u[:,2]
     R2 = np.matmul(np.matmul(u,w),v)
-    if np.linalg.det(R2)<0:
-        C2 = -C2
-        R2 = -R2
+##    if np.linalg.det(R2)<0:
+##        C2 = -C2
+##        R2 = -R2
     
     C3 = u[:,2]
     R3 = np.matmul(np.matmul(u,np.transpose(w)),v)
-    if np.linalg.det(R3)<0:
-        C3 = -C3
-        R3 = -R3
+##    if np.linalg.det(R3)<0:
+##        C3 = -C3
+##        R3 = -R3
 
     C4 = -u[:,2]
     R4 = np.matmul(np.matmul(u,np.transpose(w)),v)
-    if np.linalg.det(R4)<0:
-        C4 = -C4
-        R4 = -R4
+##    if np.linalg.det(R4)<0:
+##        C4 = -C4
+##        R4 = -R4
 
     return C1,C2,C3,C4,R1,R2,R3,R4
 
@@ -265,7 +264,6 @@ def LinearTriangulation(K, C1, R1, C2, R2, x1, x2):
     P1 = np.dot(K, np.dot(R1, np.concatenate((I, -C1),axis=1)))
     P2 = np.dot(K, np.dot(R2, np.concatenate((I, -C2),axis=1)))
 
-    #     print(P2.shape)
     X1 = np.concatenate((x1, np.ones((sz, 1))), axis=1)
     X2 = np.concatenate((x2, np.ones((sz, 1))), axis=1)
 
@@ -283,21 +281,19 @@ def LinearTriangulation(K, C1, R1, C2, R2, x1, x2):
     return X
 
 def Cheirality(C, R, X): #TODO
-
     best = 0
+    R_best, C_best = R[0], C[0]
     for i in range(4):
-        N = X.shape[0]
         n = 0
-        for j in range(N):
-            if (np.dot(R[i][2, :], (X[j] - C[i])) > 0):
-                n += 1
+        for j in range(len(X)):
+            if np.matmul(R[i][2],np.transpose(X[j]-C[i])) > 0:
+                n = n + 1
         if n > best:
-            Cbest = C[i]
-            Rbest = R[i]
-            Xbest = X[i]
+            C_best = C[i]
+            R_best = R[i]
             best = n
 
-    return Xbest, Rbest, Cbest
+    return R_best, C_best
 
 def NonLinearTriangulation(K, x1, x2, X_0, R1, C1, R2, C2): #TODO
 
@@ -339,8 +335,6 @@ def minimizeFunction(init, K, x1, x2, R1, C1, R2, C2): #TODO
     u2 = np.divide((np.dot(P2[0, :], X.T).T), (np.dot(P2[2, :], X.T).T))
     v2 = np.divide((np.dot(P2[1, :], X.T).T), (np.dot(P2[2, :], X.T).T))
 
-    #     print(u1.shape,x1.shape)
-
     error1 = ((x1[:, 0] - u1) + (x1[:, 1] - v1))
     error2 = ((x2[:, 0] - u2) + (x2[:, 1] - v2))
     #     print(error1.shape)
@@ -358,9 +352,16 @@ files.sort()
 images = []
 count = 0
 fx, fy, cx, cy, G_camera_image, LUT = ReadCameraModel()
+x = []
+y = []
+z = []
+u = []
+v = []
+w = []
+fig = plt.figure()
+ax = fig.gca(projection='3d')
 for file in files:
     images=cv2.imread(file, cv2.IMREAD_UNCHANGED)
-    print(images.shape)
     #cv2.imshow("video", images)
     
     color_image = cv2.cvtColor(images, cv2.COLOR_BayerGR2BGR)
@@ -373,6 +374,8 @@ for file in files:
     #img_new=color_image
     img_new = UndistortImage(color_image, LUT)
     img_new = cv2.resize(img_new, (400, 300))
+
+    
     if count>0:
     # Perform all matrix operations
         F, inliers1, inliers2 = findPoints(img_old,img_new)
@@ -380,15 +383,31 @@ for file in files:
         C1,C2,C3,C4,R1,R2,R3,R4 = estimateC(E)
         X = LinearTriangulation(K, C1, R1, C2, R2, inliers1, inliers2)
         C=np.vstack((C1,C2,C3,C4))
-        R = np.array([R1, R2, R3, R4])
-        X,R,C=Cheirality(C,R,X)
-        print(X,R,C)
-    # cv2.imshow("Undistorted Img", img_new)
+        R = R1,R2,R3,R4
+        R,C=Cheirality(C,R,X)
+
+        print(C)
+        x.append(float(C[0]))
+        y.append(float(C[1]))
+        z.append(float(C[2]))
+        # Make the direction data for the arrows
+        print(float(np.sin(np.pi * x[-1]) * np.cos(np.pi * y[-1]) * np.cos(np.pi * z[-1])))
+        u.append(float(np.sin(np.pi * x[-1]) * np.cos(np.pi * y[-1]) * np.cos(np.pi * z[-1])))
+        v.append(float(-np.cos(np.pi * x[-1]) * np.sin(np.pi * y[-1]) * np.cos(np.pi * z[-1])))
+        w.append(float((np.sqrt(2.0 / 3.0) * np.cos(np.pi * x[-1]) * np.cos(np.pi * y[-1]) * np.sin(np.pi * z[-1]))))
+        
+
+        cv2.imshow("Undistorted Img", img_new)
 
 
     count+=1
+    print(count)
     key = cv2.waitKey(1) & 0xFF
     if key == 27 or key == ord("q"):
+        np.savez('mat.npz',x,y,z,u,v,w)
         break
+
+ax.quiver(x, y, z, u, v, w, length=0.1, normalize=True)
+plt.show()
 
 #https://stackoverflow.com/questions/52305578/sift-cv2-xfeatures2d-sift-create-not-working-even-though-have-contrib-instal
