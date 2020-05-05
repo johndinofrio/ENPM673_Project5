@@ -214,27 +214,23 @@ def estimateC(E):
     C1 = u[:,2]
     R1 = np.matmul(np.matmul(u,w),v)
     # Correct pose and matrix if determinant is -1
-##    if np.linalg.det(R1)<0:
-##        C1 = -C1
-##        R1 = -R1
+    if np.linalg.det(R1)<0:
+        C1 = -C1
 
     C2 = -u[:,2]
     R2 = np.matmul(np.matmul(u,w),v)
-##    if np.linalg.det(R2)<0:
-##        C2 = -C2
-##        R2 = -R2
+    if np.linalg.det(R2)<0:
+        C2 = -C2
     
     C3 = u[:,2]
     R3 = np.matmul(np.matmul(u,np.transpose(w)),v)
-##    if np.linalg.det(R3)<0:
-##        C3 = -C3
-##        R3 = -R3
+    if np.linalg.det(R3)<0:
+        C3 = -C3
 
     C4 = -u[:,2]
     R4 = np.matmul(np.matmul(u,np.transpose(w)),v)
-##    if np.linalg.det(R4)<0:
-##        C4 = -C4
-##        R4 = -R4
+    if np.linalg.det(R4)<0:
+        C4 = -C4
 
     return C1,C2,C3,C4,R1,R2,R3,R4
 
@@ -371,13 +367,12 @@ for file in files:
         C=np.vstack((C1,C2,C3,C4))
         R = R1,R2,R3,R4
         R,C=Cheirality(C,R,X)
+        C = np.matmul(R,C)
 
-        print(C)
         x.append(float(C[0]))
         y.append(float(C[1]))
         z.append(float(C[2]))
         # Make the direction data for the arrows
-        print(float(np.sin(np.pi * x[-1]) * np.cos(np.pi * y[-1]) * np.cos(np.pi * z[-1])))
         u.append(float(np.sin(np.pi * x[-1]) * np.cos(np.pi * y[-1]) * np.cos(np.pi * z[-1])))
         v.append(float(-np.cos(np.pi * x[-1]) * np.sin(np.pi * y[-1]) * np.cos(np.pi * z[-1])))
         w.append(float((np.sqrt(2.0 / 3.0) * np.cos(np.pi * x[-1]) * np.cos(np.pi * y[-1]) * np.sin(np.pi * z[-1]))))
