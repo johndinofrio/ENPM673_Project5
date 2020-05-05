@@ -242,10 +242,10 @@ def LinearTriangulation(K, C1, R1, C2, R2, x1, x2):
     x1=np.asarray(x1)
     I = np.identity(3)
     sz = x1.shape[0]
-    C1 = np.reshape(C1, (3, 1))
-    C2 = np.reshape(C2, (3, 1))
-    P1 = np.dot(K, np.dot(R1, np.concatenate((I, -C1),axis=1)))
-    P2 = np.dot(K, np.dot(R2, np.concatenate((I, -C2),axis=1)))
+    C_1 = np.reshape(C1, (3, 1))
+    C_2 = np.reshape(C2, (3, 1))
+    P1 = np.dot(K, np.dot(R1, np.concatenate((I, -C_1),axis=1)))
+    P2 = np.dot(K, np.dot(R2, np.concatenate((I, -C_2),axis=1)))
 
     X1 = np.concatenate((x1, np.ones((sz, 1))), axis=1)
     X2 = np.concatenate((x2, np.ones((sz, 1))), axis=1)
@@ -278,36 +278,30 @@ def Cheirality(C, R, X): #TODO
 
     return R_best, C_best
 
-def NonLinearTriangulation(K, x1, x2, X_0, R1, C1, R2, C2): #TODO
-
-    sz = x1.shape[0]
-    X = np.zeros((sz, 3))
-
+def NonLinear(K, x1, x2, X_0, C1, R1, C2, R2):
+    x1 = np.asarray(x1)
+    x2 = np.asarray(x2)
+    X = np.zeros((x1.shape[0], 3))
     X0 = X_0.flatten()
     #     Tracer()()
     optimized_params = opt.least_squares(
-        fun=minimizeFunction,
+        fun=Function,
         x0=X0,
-        method="dogbox",
-        args=[K, x1, x2, R1, C1, R2, C2])
+        args=[K,C1, R1, R2, C2, x1,x2])
 
-    X = np.reshape(optimized_params.x, (sz, 3))
+    X = np.reshape(optimized_params.x, (x1.shape[0], 3))
 
     return X
 
 
-def minimizeFunction(init, K, x1, x2, R1, C1, R2, C2): #TODO
+def Function(init, K, C1, R1, R2, C2, inliers1, inliers2):
 
-    sz = x1.shape[0]
-    X = np.reshape(init, (sz, 3))
-
+    X = np.hstack((np.reshape(init, (inliers1.shape[0], 3)), np.ones((inliers1.shape[0], 1))))
     I = np.identity(3)
-    C2 = np.reshape(C2, (3, -1))
-
-    X = np.hstack((X, np.ones((sz, 1))))
-
-    P1 = np.dot(K, np.dot(R1, np.hstack((I, -C1))))
-    P2 = np.dot(K, np.dot(R2, np.hstack((I, -C2))))
+    C1 = np.reshape(C1, (3, 1))
+    C2 = np.reshape(C2, (3, 1))
+    P1 = np.dot(K, np.dot(R1, np.concatenate((I, -C1), axis=1)))
+    P2 = np.dot(K, np.dot(R2, np.concatenate((I, -C2), axis=1)))
 
     error1 = 0
     error2 = 0
@@ -318,8 +312,8 @@ def minimizeFunction(init, K, x1, x2, R1, C1, R2, C2): #TODO
     u2 = np.divide((np.dot(P2[0, :], X.T).T), (np.dot(P2[2, :], X.T).T))
     v2 = np.divide((np.dot(P2[1, :], X.T).T), (np.dot(P2[2, :], X.T).T))
 
-    error1 = ((x1[:, 0] - u1) + (x1[:, 1] - v1))
-    error2 = ((x2[:, 0] - u2) + (x2[:, 1] - v2))
+    error1 = ((inliers1[:, 0] - u1) + (inliers1[:, 1] - v1))
+    error2 = ((inliers2[:, 0] - u2) + (inliers2[:, 1] - v2))
     #     print(error1.shape)
     error = sum(error1, error2)
 
@@ -364,6 +358,7 @@ for file in files:
         E = estimateE(F,K)
         C1,C2,C3,C4,R1,R2,R3,R4 = estimateC(E)
         X = LinearTriangulation(K, C1, R1, C2, R2, inliers1, inliers2)
+        X = NonLinear(K,inliers1,inliers2,X,C1,R1,C2,R2)
         C=np.vstack((C1,C2,C3,C4))
         R = R1,R2,R3,R4
         R,C=Cheirality(C,R,X)
